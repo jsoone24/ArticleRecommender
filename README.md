@@ -1,5 +1,5 @@
 # Article Recommender
-Customized article recommending android app
+Personalized article recommendation Android app
 
 > ## Server
 ### django backend
