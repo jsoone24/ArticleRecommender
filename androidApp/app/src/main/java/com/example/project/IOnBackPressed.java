@@ -1,10 +1,11 @@
 package com.example.project;
 
-public interface IOnBackPressed { //프래그먼트의 뒤로가기를 제어하기 위한 인터페이스이다.
-    /**
-     * If you return true the back press will not be taken into account, otherwise the activity will act naturally
-     *
-     * @return true if your processing has priority if not false
-     */
+/**
+ * Lets a fragment opt into intercepting the host activity's back press.
+ * {@link MainActivity#onBackPressed()} consults the visible fragment via
+ * this interface before falling through to the default behavior.
+ */
+public interface IOnBackPressed {
+    /** Return {@code true} to consume the press; {@code false} to let the activity handle it. */
     boolean onBackPressed();
 }

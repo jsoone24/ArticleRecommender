@@ -18,11 +18,12 @@ import io.realm.Realm;
 import io.realm.RealmResults;
 
 /**
- * A simple {@link Fragment} subclass.
- * Use the {@link BookmarkFragment#newInstance} factory method to
- * create an instance of this fragment.
+ * The "Bookmarks" tab. Reads {@link BookmarkVO} rows out of Realm and
+ * renders them through {@link BookmarkAdapter}. When the user toggles a
+ * bookmark off inside {@link ReadMode}, the result code is bubbled back
+ * here to remove the row without a full reload.
  */
-public class BookmarkFragment extends Fragment implements AdapterView.OnItemClickListener { //북마크 된 기사들을 보여주는 북마크 프래그먼트 뷰이다.
+public class BookmarkFragment extends Fragment implements AdapterView.OnItemClickListener {
 
     // TODO: Rename parameter arguments, choose names that match
     // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER

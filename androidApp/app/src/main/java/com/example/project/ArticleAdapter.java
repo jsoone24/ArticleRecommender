@@ -15,7 +15,12 @@ import com.bumptech.glide.Glide;
 
 import java.util.ArrayList;
 
-public class ArticleAdapter extends ArrayAdapter<ArticleVO> { //기사 목록을 보여주는 어댑터 설정
+/**
+ * Renders the recommended-article ListView in {@link ArticleFragment}.
+ * Reuses {@link BookmarkHolder} since both lists share the same row layout
+ * ({@code R.layout.article_layout}).
+ */
+public class ArticleAdapter extends ArrayAdapter<ArticleVO> {
     Context context; //어댑터를 실행한 액티비티의 context를 저장하기 위한 변수
     int resId;
     ArrayList<ArticleVO> datas;

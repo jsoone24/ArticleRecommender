@@ -1,25 +1,30 @@
+"""Celery task wiring for the recommender recompute.
+
+Triggered by ``views.GetUserFile`` after a fresh ``recorddb`` upload.
+Runs ``User_update`` (drift the user vector) followed by ``DB_similarity``
+(rank every article against it and write the per-user ``recommenddb``).
+
+The two stages are sequential because ``DB_similarity`` reads the
+``UserData.csv`` that ``User_update`` writes.
+"""
+
 from __future__ import absolute_import, unicode_literals
+import os
+
 from celery import shared_task
 
-from django_project.celery import app
 from .py import User_update, DB_similarity
-import os
-from shutil import copy
-import time
 
-@shared_task #define tasks runs in celery. this functions run asyncronically
-def Run_User_Update(ID): 
+
+@shared_task
+def Run_User_Update(ID):
+    """Recompute one user's recommendations end-to-end."""
     print("inside celery", ID)
-    dirpath = './recommender/userprofile/'+ID 
-
-    if not (os.path.isdir(dirpath)):
-        os.mkdir(dirpath)
+    dirpath = './recommender/userprofile/' + ID
+    os.makedirs(dirpath, exist_ok=True)
 
     print("running User_Update...")
-    User_update.main(ID) #run User_Update. which updates keyword weights in userfile
-    print("running DB_similarilty...")
-    Run_DB_similarity(ID) #list and sort articles comparing article keyword weights and user keyword weights
-    print("finished")
-
-def Run_DB_similarity(ID):
+    User_update.main(ID)
+    print("running DB_similarity...")
     DB_similarity.main(ID)
+    print("finished")

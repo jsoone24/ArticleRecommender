@@ -11,11 +11,10 @@ import android.widget.TextView;
 import androidx.fragment.app.Fragment;
 
 /**
- * A simple {@link Fragment} subclass.
- * Use the {@link UserFragment#newInstance} factory method to
- * create an instance of this fragment.
+ * The "User" tab — shows the per-install UUID and a button that opens
+ * {@link UserRecordView} (the full reading-history list).
  */
-public class UserFragment extends Fragment { //프래그먼트 뷰에서 유저 정보에 관한 뷰이다.
+public class UserFragment extends Fragment {
 
     // TODO: Rename parameter arguments, choose names that match
     // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER

@@ -15,8 +15,9 @@ import com.bumptech.glide.Glide;
 
 import java.util.ArrayList;
 
+/** Renders the reading-history list shown by {@link UserRecordView}. */
 public class RecordAdapter extends ArrayAdapter<RecordVO> {
-    Context context; //어댑터를 실행한 액티비티의 context를 저장하기 위한 변수
+    Context context;
     int resId;
     ArrayList<RecordVO> datas;
 

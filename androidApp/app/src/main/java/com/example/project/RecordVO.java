@@ -1,6 +1,7 @@
 package com.example.project;
 
-public class RecordVO { //사용자 기록파일 관리를 위한 클래스
+/** One row in the reading-history list rendered by {@link UserRecordView}. */
+public class RecordVO {
     String readDate;
     String link;
 }

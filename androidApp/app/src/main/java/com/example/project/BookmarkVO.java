@@ -4,7 +4,12 @@ import java.io.Serializable;
 
 import io.realm.RealmObject;
 
-public class BookmarkVO extends RealmObject implements Serializable { //북마크 객체 데이터를 처리하기 위한 클래스이다.
+/**
+ * A bookmarked article. Persisted in the local Realm; never sent to the
+ * server. Carries a snapshot of the scraped article body so bookmarks
+ * remain readable even if the source page later changes or 404s.
+ */
+public class BookmarkVO extends RealmObject implements Serializable {
     public String title;
     public String summary;
     public String link;

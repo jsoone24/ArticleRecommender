@@ -4,6 +4,11 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+/**
+ * View-holder for one row of {@code R.layout.article_layout}. Used by
+ * both {@link ArticleAdapter} and {@link BookmarkAdapter} since the row
+ * layout is shared.
+ */
 public class BookmarkHolder {
     public ImageView articleImage;
     public TextView articleTitle;

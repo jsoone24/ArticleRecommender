@@ -1,3 +1,25 @@
+"""Naver News crawler — pipeline step 1.
+
+Walks news.naver.com across six top-level categories (politics 100,
+economy 101, society 102, life/culture 103, world 104, IT/science 105)
+and their sub-categories. For each article it:
+
+* downloads the body via ``newspaper3k``,
+* extracts a TextRank summary via ``gensim.summarization.summarize``,
+* extracts the top-5 keywords via ``gensim.summarization.keywords``.
+
+Output: one CSV per ``(date, sid1, sid2)`` at::
+
+    ./articleInfo/<YYYY-MM-DD>/<sid1>/sid2_<sid2>.csv
+
+Each row: ``aid, oid, sid1, sid2, body, title, summary, keyword 0..4,
+keyword N weight``. ``Make_DB`` consumes these and pivots them into the
+article × keyword matrix used for ranking.
+
+Note: the start/end date are hard-coded constants in ``main`` — wire them
+to ``datetime.date.today()`` (or a CLI arg) before scheduling on cron.
+"""
+
 from bs4 import BeautifulSoup
 import re
 import urllib.request

@@ -1,3 +1,29 @@
+"""Drift the user's keyword-weight vector based on what they just read.
+
+Pipeline step 3 of the recommender (see README "How the recommender works").
+
+Reads:
+    - ``recorddb`` SQLite that the client just uploaded (table ``tb_record``
+      with one row per article opened).
+    - ``articleDB/<date>_DB.csv`` — the pivoted article × keyword matrix for
+      the day the read article was published.
+    - ``UserData.csv`` — the user's existing keyword-weight vector, if any.
+
+Writes:
+    - ``UserData.csv`` — the updated keyword-weight vector. Columns are
+      keywords (namespaced ``sid1_sid2_<word>``); the single row is the
+      user's normalised weight per keyword.
+
+Update rule (per newly-read article):
+    new_weight = old_weight × (article_weight × 100 + 1)
+    then re-normalise so the row sums to 1, then drop the lowest-weight
+    keyword to keep the vector bounded.
+
+Limitation: the comparison date is hard-coded to ``2020-09-05`` because
+that's the only article DB shipped with the project. A production crawl
+would key off the article's actual publish date.
+"""
+
 import pandas as pd
 import os.path
 import errno

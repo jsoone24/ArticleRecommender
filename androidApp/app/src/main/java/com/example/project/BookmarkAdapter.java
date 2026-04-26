@@ -15,7 +15,12 @@ import com.bumptech.glide.Glide;
 
 import java.util.ArrayList;
 
-public class BookmarkAdapter extends ArrayAdapter<ArticleVO> { //북마크 목록을 보여주는 어댑터 설정
+/**
+ * Renders the bookmark ListView in {@link BookmarkFragment}. Items come
+ * from Realm, mapped onto the same {@link ArticleVO} shape that
+ * {@link ArticleAdapter} consumes so the row layout can be shared.
+ */
+public class BookmarkAdapter extends ArrayAdapter<ArticleVO> {
     Context context;
     int resId;
     ArrayList<ArticleVO> datas;
