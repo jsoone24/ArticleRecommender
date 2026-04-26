@@ -5,7 +5,6 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -19,11 +18,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 import io.realm.Realm;
-import io.realm.RealmResults;
 
-public class StartScreen extends AppCompatActivity { //어플을 실행하자마자 보이는 초기화 화면입니다.
-    private String android_id;
-    private String dirPath = "/data/data/com.example.project/databases"; //데이터베이스의 경로
+/**
+ * Splash screen. Pulls a fresh per-user recommendation database from the
+ * server, then scrapes article metadata for each link before handing off to
+ * {@link MainActivity}.
+ */
+public class StartScreen extends AppCompatActivity {
+    /** Cap on the number of articles indexed before opening MainActivity. */
+    private static final int MAX_INDEXED = 50;
+
+    private File recommendDbFile;
     TextView textView;
 
     @Override
@@ -31,43 +36,39 @@ public class StartScreen extends AppCompatActivity { //어플을 실행하자마
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_screen);
 
-        startService(new Intent(this, ForecdTerminationService.class)); //서비스를 실행한다. 앱이 강제 종료되는 것을 백그라운드에서 감지하여 후에 동작을 수행한다.
-        android_id = Settings.Secure.getString(getApplicationContext().getContentResolver(), Settings.Secure.ANDROID_ID);
+        startService(new Intent(this, ForecdTerminationService.class));
+        recommendDbFile = new File(Config.databasesDir(this), "recommenddb");
         textView = findViewById(R.id.initializeStatusText);
 
-        Realm.init(this);//Realm 초기화
+        Realm.init(this);
         textView.setText("DownloadingFile...");
-        DownloadFile downloadFile = new DownloadFile();
-        downloadFile.execute(); //파일 확인 시작 전 recommend 파일 다운로드
+        new DownloadFile().execute();
     }
 
-    class DownloadFile extends AsyncTask<Void, String, Void> { //앱 실행시 recommend파일 서버로부터 다운로드
-
+    /** Wipes stale per-launch caches, then pulls the latest recommend DB. */
+    class DownloadFile extends AsyncTask<Void, String, Void> {
         @Override
         protected Void doInBackground(Void... voids) {
-            Realm mrealm = Realm.getDefaultInstance(); //기록을 앱을 켠 순간부터 다시 하기 위해서 다 지운다.
-            final RealmResults<ArticleVO> results = mrealm.where(ArticleVO.class).findAll();
-            mrealm.executeTransaction(new Realm.Transaction() {
-                @Override
-                public void execute(Realm realm) {
-                    results.deleteAllFromRealm();
-                }
-            });
+            // Stale recommendations from a previous session would otherwise
+            // bleed into the new list before the server response lands.
+            try (Realm realm = Realm.getDefaultInstance()) {
+                realm.executeTransaction(r -> r.where(ArticleVO.class).findAll().deleteAllFromRealm());
+            }
 
-            RecommendRequester recommendRequester = new RecommendRequester(); //서버로부터 파일을 다운로드 받는다.
-            recommendRequester.request("http://URL:8080/recommender/SendUserFile/".concat(android_id), dirPath, "recommenddb");
+            String url = Config.sendUserFileUrl(Config.userId(StartScreen.this));
+            new RecommendRequester(url, recommendDbFile).execute();
             return null;
         }
 
         @Override
         protected void onPostExecute(Void aVoid) {
             new On().execute();
-        } //서버로부터 데이터베이스 파일을 다운로드 받은 후, 데이터베이스를 ArrayList형태로 만든다.
+        }
     }
 
+    /** Reads the freshly downloaded SQLite and scrapes article metadata. */
     class On extends AsyncTask<Void, String, Void> {
-        String filePath = dirPath + "/" + "recommenddb";
-        ArrayList<ArticleVO> datas = new ArrayList<>();
+        final ArrayList<ArticleVO> datas = new ArrayList<>();
 
         @Override
         protected void onProgressUpdate(String... values) {
@@ -83,53 +84,50 @@ public class StartScreen extends AppCompatActivity { //어플을 실행하자마
         }
 
         @Override
-        protected Void doInBackground(Void... voids) { //데이터베이스의 파일 내용 중 링크를 파싱하여 기사마다의 정보를 파악한다.
-            File file = new File(filePath);
-            SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(file, null);
-            Cursor cursor = db.rawQuery("select link, similarity from tblink order by similarity desc", null);
-            int i = 0;
-            while (cursor.moveToNext()) {
-                String link = cursor.getString(0);
-                String similarity = cursor.getString(1);
-                ArticleVO articleVO = new ArticleVO();
+        protected Void doInBackground(Void... voids) {
+            try (SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(recommendDbFile, null);
+                 Cursor cursor = db.rawQuery(
+                     "select link, similarity from tblink order by similarity desc", null)) {
 
-                Document doc = null;
-                try {
-                    doc = Jsoup.connect(link).get();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                assert doc != null;
-                try {
-                    Elements getTitle = doc.select("#articleTitle");   // 아이디가 _article인 div 태그 선택
-                    Elements getArticleDateTime = doc.select("#main_content > div.article_header > div.article_info > div > span:nth-child(1)");
-                    Elements getArticleModifyTime = doc.select("#main_content > div.article_header > div.article_info > div > span:nth-child(2)");
-                    Elements getPublisher = doc.select("#main_content > div.article_header > div.press_logo > a > img");
-                    Elements getImageUri = doc.select("#articleBodyContents").select("img");
+                int i = 0;
+                while (cursor.moveToNext() && i < MAX_INDEXED) {
+                    String link = cursor.getString(0);
+                    String similarity = cursor.getString(1);
 
-                    articleVO.link = link;
-                    articleVO.similarity = similarity;
-                    articleVO.title = getTitle.text();
-                    articleVO.date = "입력 : " + getArticleDateTime.text();
-                    articleVO.publisher = getPublisher.attr("title");
-
+                    Document doc;
                     try {
-                        articleVO.imageUri = getImageUri.first().attr("src");
-                    } catch (NullPointerException e) {
-                        articleVO.imageUri = "";
+                        doc = Jsoup.connect(link).get();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        continue;
+                    }
+                    if (doc == null) {
+                        continue;
                     }
 
-                    datas.add(articleVO);
-                    publishProgress("IndexingData..." + i);
+                    try {
+                        ArticleVO articleVO = new ArticleVO();
+                        articleVO.link = link;
+                        articleVO.similarity = similarity;
+                        articleVO.title = doc.select("#articleTitle").text();
+                        articleVO.date = "입력 : " + doc.select(
+                            "#main_content > div.article_header > div.article_info > div > span:nth-child(1)"
+                        ).text();
+                        articleVO.publisher = doc.select(
+                            "#main_content > div.article_header > div.press_logo > a > img"
+                        ).attr("title");
 
-                    i += 1;
+                        Elements images = doc.select("#articleBodyContents").select("img");
+                        articleVO.imageUri = images.first() != null ? images.first().attr("src") : "";
 
-                    if (i > 50)
-                        break;
-                }catch (Exception e){}
+                        datas.add(articleVO);
+                        publishProgress("IndexingData..." + i);
+                        i += 1;
+                    } catch (Exception ignored) {
+                        // Skip articles whose markup doesn't match Naver's expected layout.
+                    }
+                }
             }
-            cursor.close();
-
             return null;
         }
     }

@@ -1,23 +1,49 @@
 apply plugin: 'com.android.application'
 apply plugin: 'realm-android'
-apply plugin: 'com.google.gms.google-services'
+
+// Read SERVER_BASE_URL from gradle.properties (or -PSERVER_BASE_URL=...).
+// Defaults to https://localhost so a misconfigured build fails fast and loud
+// rather than shipping a stale or attacker-controlled URL.
+def resolvedServerBaseUrl = (project.hasProperty("SERVER_BASE_URL")
+        ? project.property("SERVER_BASE_URL")
+        : "https://localhost").toString()
+
+// Shared HMAC secret for request signing. Empty default makes the build
+// proceed (so a fresh checkout opens cleanly) but the server will reject
+// unsigned requests in production.
+def resolvedSigningSecret = (project.hasProperty("REQUEST_SIGNING_SECRET")
+        ? project.property("REQUEST_SIGNING_SECRET")
+        : "").toString()
 
 android {
-    compileSdkVersion 30
-    buildToolsVersion "30.0.1"
+    namespace 'com.example.project'
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.example.project'
-        minSdkVersion 23
-        targetSdkVersion 30
+        minSdk 23
+        targetSdk 36
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "SERVER_BASE_URL", "\"${resolvedServerBaseUrl}\""
+        buildConfigField "String", "REQUEST_SIGNING_SECRET", "\"${resolvedSigningSecret}\""
+    }
+
+    buildFeatures {
+        // BuildConfig generation is opt-in starting in AGP 8.
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 
     buildTypes {
-        customDebugType{
+        debug {
             debuggable true
         }
         release {
@@ -27,20 +53,31 @@ android {
     }
 }
 
-dependencies {
-    implementation 'com.github.bumptech.glide:glide:4.9.0'
-    annotationProcessor 'com.github.bumptech.glide:compiler:4.9.0'
+// A release APK shipped with an empty signing secret will silently send
+// unsigned requests that the production server will reject. Make that fail
+// at build time so it never reaches a user's device.
+gradle.taskGraph.whenReady { graph ->
+    boolean buildingRelease = graph.allTasks.any { it.name.toLowerCase().contains("release") }
+    if (buildingRelease && resolvedSigningSecret.isEmpty()) {
+        throw new GradleException(
+            "REQUEST_SIGNING_SECRET is empty for a release build. " +
+            "Set it in gradle.properties or pass -PREQUEST_SIGNING_SECRET=... " +
+            "(must match the server's REQUEST_SIGNING_SECRET env var)."
+        )
+    }
+}
 
-    implementation fileTree(dir: "libs", include: ["*.jar"])
-    implementation 'com.google.firebase:firebase-analytics:17.5.0'
-    implementation 'androidx.appcompat:appcompat:1.2.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.1'
-    implementation 'androidx.gridlayout:gridlayout:1.0.0'
-    implementation 'com.google.android.material:material:1.2.0'
-    implementation 'com.google.android.gms:play-services-maps:17.0.0'
-    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation files('libs/jsoup-1.13.1.jar')
-    testImplementation 'junit:junit:4.13'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.2'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'com.google.android.material:material:1.12.0'
+
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+
+    implementation 'org.jsoup:jsoup:1.18.3'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 }

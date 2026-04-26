@@ -1,52 +1,116 @@
-from django.shortcuts import render
-from django.http import FileResponse
-from django.http import HttpResponse
-from django.http import HttpResponseRedirect
-from django.shortcuts import render
-import os
-import mimetypes
-from shutil import copy
+"""HTTP endpoints for the recommender app.
 
+Two endpoints, both per-user-keyed by an opaque ID supplied by the Android
+client (a v4 UUID generated at install time):
+
+* ``GET  /recommender/SendUserFile/<id>`` — stream the user's recommendation
+  SQLite back to the client. New users get a copy of the default DB.
+* ``POST /recommender/GetUserFile/<id>`` — receive the user's reading-history
+  SQLite, then enqueue a Celery task to recompute their profile.
+
+Both are HMAC-signed (see :mod:`recommender.auth`) and the user ID is
+strictly validated and resolved against ``USERPROFILE_ROOT`` to prevent
+path traversal.
+"""
+
+import re
+import shutil
+from pathlib import Path
+
+from django.conf import settings
+from django.http import (
+    FileResponse,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseServerError,
+)
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+
+from .auth import require_signed_request
+from .forms import UploadFileForm
 from .tasks import Run_User_Update
 
-# Create your views here.
-from .forms import UploadFileForm
-from django.conf import settings
 
-def SendUserFile(request, ID): #When android device access through exact link, there's android unique id
-    dirpath = './recommender/userprofile/'+ID
-    filepath = './recommender/userprofile/'+ID+'/recommenddb'
+# Keep the per-user ID to a safe character set so it can never escape the
+# userprofile directory via `..`, `/`, NULs, etc. ANDROID_ID / UUIDs both fit.
+_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-    if not (os.path.isdir(dirpath)): #if directory for id is not defined, then make new directory.
-        os.mkdir(dirpath)
+USERPROFILE_ROOT = (Path(settings.BASE_DIR) / "recommender" / "userprofile").resolve()
+DEFAULT_RECOMMENDDB = USERPROFILE_ROOT / "default" / "recommenddb"
 
-    if not (os.path.isfile(filepath)): #if new user, then copy default recommend file.
-        copy('./recommender/userprofile/default/recommenddb',dirpath)
 
-    response = HttpResponse(open(filepath,'rb')) #Set http file response. Send recommenddb file to android
-    response['Content-Disposition'] = 'attachment; filename="recommenddb"'
+def _user_dir(user_id: str) -> Path:
+    """Resolve and validate the per-user directory under USERPROFILE_ROOT."""
+    if not _ID_RE.match(user_id):
+        raise ValueError("invalid user id")
+    candidate = (USERPROFILE_ROOT / user_id).resolve()
+    # Defense in depth: even with the regex, confirm the resolved path is
+    # rooted under USERPROFILE_ROOT before any I/O.
+    if not candidate.is_relative_to(USERPROFILE_ROOT):
+        raise ValueError("invalid user id")
+    return candidate
+
+
+@require_http_methods(["GET"])
+@require_signed_request
+def SendUserFile(request, ID):
+    """Stream the per-user recommenddb SQLite back to the Android client."""
+    try:
+        user_dir = _user_dir(ID)
+    except ValueError:
+        return HttpResponseBadRequest("invalid id")
+
+    target = user_dir / "recommenddb"
+    if not target.is_file():
+        # Cold path: brand-new user. Materialise the default DB once.
+        if not DEFAULT_RECOMMENDDB.is_file():
+            return HttpResponseServerError("default recommenddb missing")
+        user_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(DEFAULT_RECOMMENDDB, target)
+
+    response = FileResponse(target.open("rb"), content_type="application/octet-stream")
+    response["Content-Disposition"] = 'attachment; filename="recommenddb"'
     return response
 
 
-def GetUserFile(request, ID): #When android device terminated app, android_device send user_article_record_file to this function 
-    if request.method == 'POST':
-        form = UploadFileForm(request.POST, request.FILES) #error occur at valid procedure 
-        if form.is_valid():
-            print(request.FILES)
-            handle_uploaded_file(request.FILES['file'],ID) #to download file, hand over task to handler.
-            Run_User_Update.delay(ID) #Hand over the User_Update task to the celery.
-            print("task went to celery...")
-            return HttpResponse("success")
+@csrf_exempt  # Mobile client uploads do not carry a CSRF cookie.
+@require_http_methods(["POST"])
+@require_signed_request
+def GetUserFile(request, ID):
+    """Receive the user's reading-history SQLite, then kick off recompute."""
+    try:
+        user_dir = _user_dir(ID)
+    except ValueError:
+        return HttpResponseBadRequest("invalid id")
 
-    else:
-        form= UploadFileForm()
-    return render(request, 'upload.html', {'form': form})
+    form = UploadFileForm(request.POST, request.FILES)
+    if not form.is_valid():
+        return HttpResponseBadRequest("invalid upload")
+
+    user_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        _write_upload(request.FILES["file"], user_dir / "recorddb")
+    except ValueError:
+        # The streaming cap was exceeded mid-write.
+        return HttpResponseBadRequest("file too large")
+
+    Run_User_Update.delay(ID)
+    return HttpResponse("success")
 
 
-def handle_uploaded_file(file, ID): #this is filedownload handler
-    dirpath = './recommender/userprofile/'+ID
-    if not (os.path.isdir(dirpath)): #if directory not exist, make one
-        os.mkdir(dirpath)
-
-    with open('./recommender/userprofile/'+ID+'/recorddb', 'wb+') as destination: #file download
-        destination.write(file.read())
+def _write_upload(uploaded_file, dest: Path) -> None:
+    """Stream the upload to disk in chunks, capped at MAX_UPLOAD_BYTES."""
+    written = 0
+    cap = settings.MAX_UPLOAD_BYTES
+    try:
+        with open(dest, "wb") as fh:
+            for chunk in uploaded_file.chunks():
+                written += len(chunk)
+                if written > cap:
+                    raise ValueError("upload exceeded size cap")
+                fh.write(chunk)
+    except ValueError:
+        # Don't leave a half-written file lying around for the recompute task.
+        dest.unlink(missing_ok=True)
+        raise

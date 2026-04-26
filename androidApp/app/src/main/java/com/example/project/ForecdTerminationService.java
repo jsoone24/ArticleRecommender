@@ -3,13 +3,18 @@ package com.example.project;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
-import android.provider.Settings;
 import android.util.Log;
 
-import javax.annotation.Nullable;
+import androidx.annotation.Nullable;
 
-public class ForecdTerminationService extends Service { //앱이 강제 종료되었을 경우 수행하는 동작이다.
-    String android_id;
+import java.io.File;
+
+/**
+ * Handles the swipe-killed shutdown path that {@link android.app.Activity#onDestroy}
+ * does not see. Uploads the user's reading history before exiting.
+ */
+public class ForecdTerminationService extends Service {
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
@@ -17,11 +22,10 @@ public class ForecdTerminationService extends Service { //앱이 강제 종료�
     }
 
     @Override
-    public void onTaskRemoved(Intent rootIntent) { //핸들링 하는 부분. 종료직전 서버에 사용자 이용기록을 보낸다.
-        Log.e("Error","onTaskRemoved - " + rootIntent);
-        android_id = Settings.Secure.getString(getApplicationContext().getContentResolver(), Settings.Secure.ANDROID_ID);
-        RecordSender recordSender = new RecordSender();
-        recordSender.request("http://URL:8080/recommender/GetUserFile/".concat(android_id),"/data/data/com.example.project/databases", "recorddb" );
-        stopSelf(); //서비스 종료
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.i("ForecdTermination", "onTaskRemoved - " + rootIntent);
+        File recordDb = new File(Config.databasesDir(this), "recorddb");
+        new RecordSender(Config.getUserFileUrl(Config.userId(this)), recordDb).execute();
+        stopSelf();
     }
 }

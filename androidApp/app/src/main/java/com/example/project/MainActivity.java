@@ -1,9 +1,7 @@
 package com.example.project;
 
 import android.content.Intent;
-import android.os.AsyncTask;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.view.View;
 import android.widget.ImageButton;
 
@@ -12,13 +10,18 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 
+import java.io.File;
 import java.util.ArrayList;
 
 import io.realm.Realm;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener { //시작화면에서 앱이 추천 기사 목록 인덱싱을 마치고 프래그먼트 뷰를 관리하는 부분이다.
-    private String android_id;
-    private String dirPath = "/data/data/com.example.project/databases";
+/**
+ * Three-tab fragment host (Articles / Bookmarks / User).
+ *
+ * On natural shutdown, dispatches the user's reading-history SQLite to the
+ * server. {@link ForecdTerminationService} handles the swipe-killed case.
+ */
+public class MainActivity extends AppCompatActivity implements View.OnClickListener {
     ArrayList<ArticleVO> datas;
 
     ImageButton articleIcon;
@@ -37,7 +40,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         Intent intent = getIntent();
         datas = (ArrayList<ArticleVO>) intent.getSerializableExtra("data");
-        android_id = Settings.Secure.getString(getApplicationContext().getContentResolver(), Settings.Secure.ANDROID_ID);
 
         articleIcon = findViewById(R.id.articleIcon);
         bookmarkIcon = findViewById(R.id.bookmarkIcon);
@@ -47,7 +49,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         bookmarkIcon.setOnClickListener(this);
         userIcon.setOnClickListener(this);
 
-        manager = getSupportFragmentManager(); //프래그먼트 뷰를 관리하기 위한 매니저
+        manager = getSupportFragmentManager();
         articleFragment = new ArticleFragment(datas);
         bookmarkFragment = new BookmarkFragment();
         userFragment = new UserFragment();
@@ -62,42 +64,29 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     @Override
-    public void onClick(View view) { //프래그먼트 버튼에 리스너 설정
-        if (view == articleIcon) { //각 프래그먼트 뷰들이 버튼을 누름에 따라 포커싱 됨
-            if (!articleFragment.isVisible()) {
-                FragmentTransaction ft = manager.beginTransaction();
-                ft.addToBackStack(null);
-                ft.replace(R.id.main_container, articleFragment);
-                ft.commit();
-                articleIcon.setSelected(true);
-                bookmarkIcon.setSelected(false);
-                userIcon.setSelected(false);
-            }
+    public void onClick(View view) {
+        if (view == articleIcon) {
+            switchFragment(articleFragment, true, false, false);
         } else if (view == bookmarkIcon) {
-            if (!bookmarkFragment.isVisible()) {
-                FragmentTransaction ft = manager.beginTransaction();
-                ft.addToBackStack(null);
-                ft.replace(R.id.main_container, bookmarkFragment);
-                ft.commit();
-                articleIcon.setSelected(false);
-                bookmarkIcon.setSelected(true);
-                userIcon.setSelected(false);
-            }
+            switchFragment(bookmarkFragment, false, true, false);
         } else if (view == userIcon) {
-            if (!userFragment.isVisible()) {
-                FragmentTransaction ft = manager.beginTransaction();
-                ft.addToBackStack(null);
-                ft.replace(R.id.main_container, userFragment);
-                ft.commit();
-                articleIcon.setSelected(false);
-                bookmarkIcon.setSelected(false);
-                userIcon.setSelected(true);
-            }
+            switchFragment(userFragment, false, false, true);
         }
     }
 
+    private void switchFragment(Fragment target, boolean a, boolean b, boolean u) {
+        if (target.isVisible()) return;
+        FragmentTransaction ft = manager.beginTransaction();
+        ft.addToBackStack(null);
+        ft.replace(R.id.main_container, target);
+        ft.commit();
+        articleIcon.setSelected(a);
+        bookmarkIcon.setSelected(b);
+        userIcon.setSelected(u);
+    }
+
     @Override
-    public void onBackPressed() { //프래그먼트 뷰에서 뒤로 가기를 눌렀을 때,
+    public void onBackPressed() {
         Fragment fragment = getSupportFragmentManager().findFragmentById(R.id.main_container);
         if (!(fragment instanceof IOnBackPressed) || !((IOnBackPressed) fragment).onBackPressed()) {
             super.onBackPressed();
@@ -105,33 +94,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     @Override
-    protected void onDestroy() { //앱이 자연스레 종료될때 서버로 데이터를 전송한다.
-        SendFile sendFile = new SendFile();
-        sendFile.execute(); //파일 확인 시작 전 recommend 파일 다운로드
+    protected void onDestroy() {
+        // Best-effort upload on graceful shutdown. The OS may kill us before
+        // it lands; ForecdTerminationService.onTaskRemoved handles task-swipe.
+        File recordDb = new File(Config.databasesDir(this), "recorddb");
+        new RecordSender(Config.getUserFileUrl(Config.userId(this)), recordDb).execute();
         super.onDestroy();
     }
-
-    class SendFile extends AsyncTask<Void, String, Void> { //앱 종료시 record파일 서버로 전송
-        @Override
-        protected Void doInBackground(Void... voids) {
-            RecordSender recordSender = new RecordSender();
-            recordSender.request("http://URL:8080/recommender/GetUserFile/".concat(android_id), dirPath, "recorddb");
-            return null;
-        }
-    }
-    /*
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (System.currentTimeMillis() - initTime > 3000) {
-                showToast("종료하려면 한번 더 누르세요.");
-                initTime = System.currentTimeMillis();
-            } else {
-                finish();
-            }
-            return true;
-        }
-        return super.onKeyDown(keyCode, event);
-    }*/
-
 }
