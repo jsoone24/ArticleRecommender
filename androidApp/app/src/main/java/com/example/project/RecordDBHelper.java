@@ -4,8 +4,22 @@ import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
-public class RecordDBHelper extends SQLiteOpenHelper { //사용자 이용 기록 데이터베이스 관리
-    public static final int DATABASE_VERSION =1;
+/**
+ * Owns the local {@code recorddb} SQLite that captures every article the
+ * user opens. Schema:
+ * <pre>
+ *   CREATE TABLE tb_record (
+ *       _id          INTEGER PRIMARY KEY AUTOINCREMENT,
+ *       readdate     TEXT,   -- yyyyMMdd HHmmss
+ *       articledate  TEXT,   -- the publish date scraped from the page
+ *       link         TEXT    -- article URL
+ *   );
+ * </pre>
+ * On app close the file is uploaded to the server by {@link RecordSender}
+ * so the recommender can recompute the user's keyword profile.
+ */
+public class RecordDBHelper extends SQLiteOpenHelper {
+    public static final int DATABASE_VERSION = 1;
 
     public RecordDBHelper(Context context){
         super(context,"recorddb",null,DATABASE_VERSION);

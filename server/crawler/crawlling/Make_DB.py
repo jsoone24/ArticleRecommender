@@ -1,3 +1,20 @@
+"""Pivot the per-(date, sid1, sid2) crawl CSVs into one article × keyword
+matrix per day — pipeline step 2.
+
+Reads:
+    ``./articleInfo/<YYYY-MM-DD>/<sid1>/sid2_<sid2>.csv`` produced by
+    ``crolling.py``.
+
+Writes:
+    ``./articleDB/<YYYY-MM-DD>_DB.csv`` — rows are articles (keyed by
+    ``aid``), columns are keywords namespaced as ``sid1_sid2_<keyword>``
+    so the same surface form in different categories doesn't collide.
+    Cells are TextRank weights (0..1); missing entries are 0.
+
+This is the matrix that ``DB_similarity`` joins the user vector against
+to compute cosine-similarity rankings.
+"""
+
 import pandas as pd
 import os.path
 from datetime import date, timedelta, datetime

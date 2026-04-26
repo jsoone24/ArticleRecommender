@@ -15,9 +15,9 @@ import java.util.ArrayList;
 import java.util.Objects;
 
 /**
- * A simple {@link Fragment} subclass.
- * Use the {@link ArticleFragment#newInstance} factory method to
- * create an instance of this fragment.
+ * The "Articles" tab — the list of recommended articles the splash screen
+ * indexed for this session. Tapping a row opens {@link ReadMode}; pressing
+ * back twice within 3 seconds finishes the activity.
  */
 public class ArticleFragment extends Fragment implements IOnBackPressed, AdapterView.OnItemClickListener {
 

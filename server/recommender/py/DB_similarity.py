@@ -1,3 +1,29 @@
+"""Score every article against the user vector and write the top 100.
+
+Pipeline step 4 of the recommender (see README "How the recommender works").
+
+Reads:
+    - ``articleDB/<date>_DB.csv`` — the pivoted article × keyword matrix.
+    - ``UserData.csv`` — the user's keyword-weight vector (one row).
+
+Writes:
+    - ``recommanddb`` SQLite, table ``tblink(link TEXT, similarity REAL)``,
+      sorted descending by similarity. The Android client downloads this
+      file via ``/recommender/SendUserFile/<id>``.
+
+Algorithm:
+    1. Stack the user vector on top of the article matrix so they share
+       the same columns (missing keywords on either side become 0).
+    2. Compute ``sklearn.metrics.pairwise.cosine_similarity`` on the
+       resulting matrix; the first row gives the user's similarity to
+       every article.
+    3. Take the top 100 articles by similarity.
+
+Caveats:
+    - Comparison date is hard-coded to 2020-09-05 (same reason as
+      User_update).
+"""
+
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -69,7 +95,9 @@ def main(ID):
 
     Save = Save.sort_values(by=['similarity'], axis=0, ascending=False)
     Save = Save.head(100) #상위 100개 추천 기사 목록 데이터프레임
-    con = sqlite3.connect('./recommender/userprofile/'+ID+'/recommanddb') #sqlite 데이터 베이스 생성
+    # NOTE: original project wrote to 'recommanddb' (typo); views.py reads
+    # 'recommenddb', so personalised rankings never reached the client.
+    con = sqlite3.connect('./recommender/userprofile/'+ID+'/recommenddb')
     Save.to_sql('tblink', con, if_exists='replace')
     print('finish db_similarity')
 

@@ -4,7 +4,16 @@ import java.io.Serializable;
 
 import io.realm.RealmObject;
 
-public class ArticleVO extends RealmObject implements Serializable { //각 기사 정보를 효과적으로 관리하기 위한 클래스
+/**
+ * One row from the recommended-article list. Populated in
+ * {@link StartScreen} by combining the {@code (link, similarity)} pair
+ * from the server's {@code recommenddb} with metadata scraped from the
+ * article page itself (title, publisher, image, etc.).
+ *
+ * Implements {@link Serializable} so an {@code ArrayList<ArticleVO>}
+ * can be passed between activities through {@code Intent.putExtra}.
+ */
+public class ArticleVO extends RealmObject implements Serializable {
     public String link;
     public String similarity;
     public String title;
