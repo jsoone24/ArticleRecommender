@@ -26,7 +26,12 @@ import java.util.ArrayList;
 
 import io.realm.Realm;
 
-public class ReadMode extends AppCompatActivity implements View.OnClickListener {  //기사를 보여주는 읽기 모드 액티비티
+/**
+ * Article reader. Renders the scraped article HTML in a WebView (with JS
+ * disabled — the body comes from a third party), records the read in the
+ * local SQLite, and lets the user toggle the bookmark state.
+ */
+public class ReadMode extends AppCompatActivity implements View.OnClickListener {
     ArrayList<ArticleVO> datas;
     String link;
     String readDate;
@@ -75,19 +80,21 @@ public class ReadMode extends AppCompatActivity implements View.OnClickListener 
         readDate = dateFormat.format(System.currentTimeMillis());
 
         RecordDBHelper helper = new RecordDBHelper(getApplicationContext());  //읽은 기사들을 데이터로 저장해둔다.
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.execSQL("insert into tb_Record (readdate, articledate, link) values (?,?,?)", new String[]{readDate, datas.get(pos).date, link});
-        db.close();
+        try (SQLiteDatabase db = helper.getWritableDatabase()) {
+            db.execSQL(
+                "insert into tb_Record (readdate, articledate, link) values (?,?,?)",
+                new String[]{readDate, datas.get(pos).date, link}
+            );
+        }
 
-        try { //북마크 목록에 이 기사가 있는지 확인한다. 있으면 북마크를 눌린 상태로 표시한다.
-            Realm mRealm = Realm.getDefaultInstance();
+        try (Realm mRealm = Realm.getDefaultInstance()) {
+            //북마크 목록에 이 기사가 있는지 확인한다. 있으면 북마크를 눌린 상태로 표시한다.
             BookmarkVO vo = mRealm.where(BookmarkVO.class).equalTo("link", link).findFirst();
-            assert vo != null;
-            if (vo.link != null) {
+            if (vo != null && vo.link != null) {
                 bookmarkStatus = true;
                 bookmarkButtonView.setSelected(true);
             }
-        } catch (NullPointerException ignored) { }
+        }
 
         new Parser().execute();
 
@@ -97,37 +104,30 @@ public class ReadMode extends AppCompatActivity implements View.OnClickListener 
     }
 
     @Override
-    public void onBackPressed() { //뒤로 가기를 눌렀을때 북마크 버튼이 눌렸는지 확인한다.
-        try {
-            Realm mRealm = Realm.getDefaultInstance();
-            BookmarkVO vo = mRealm.where(BookmarkVO.class).equalTo("link", link).findFirst();
-            if (vo.link != null) { //북마크에 없고, 북마크가 눌린 상태라면, 북마크목록에 이 기사를 추가한다.
-                if (!bookmarkStatus) {
-                    mRealm.beginTransaction();
-                    vo.deleteFromRealm();
-                    mRealm.commitTransaction();
-                    Intent intent = getIntent();
-                    intent.putExtra("posreturn", pos);
-                    setResult(RESULT_OK, intent);
-                    finish();
-                }
-            }
-        } catch (NullPointerException e) { //북마크에 있지만, 북마크가 눌리지 않은 상태라면, 북마크 목록에서 이 기사를 제거한다.
-            if (bookmarkStatus) {
-                Realm Bookmark = Realm.getDefaultInstance();
-                Bookmark.executeTransaction(new Realm.Transaction() {
-                    @Override
-                    public void execute(Realm realm) {
-                        BookmarkVO vo = realm.createObject(BookmarkVO.class);
-                        vo.title = datas.get(pos).title;
-                        vo.link = link;
-                        vo.readdate = readDate;
-                        vo.date = datas.get(pos).date;
-                        vo.publisher = datas.get(pos).publisher;
-                        vo.article = article;
-                        vo.summary = datas.get(pos).summary;
-                        vo.imageUri = datas.get(pos).imageUri;
-                    }
+    public void onBackPressed() {
+        // Reconcile the bookmark store with the user's final toggle state.
+        try (Realm realm = Realm.getDefaultInstance()) {
+            BookmarkVO existing = realm.where(BookmarkVO.class).equalTo("link", link).findFirst();
+            boolean existsInStore = existing != null && existing.link != null;
+
+            if (existsInStore && !bookmarkStatus) {
+                final BookmarkVO toDelete = existing;
+                realm.executeTransaction(r -> toDelete.deleteFromRealm());
+                Intent intent = getIntent();
+                intent.putExtra("posreturn", pos);
+                setResult(RESULT_OK, intent);
+                finish();
+            } else if (!existsInStore && bookmarkStatus) {
+                realm.executeTransaction(r -> {
+                    BookmarkVO created = r.createObject(BookmarkVO.class);
+                    created.title = datas.get(pos).title;
+                    created.link = link;
+                    created.readdate = readDate;
+                    created.date = datas.get(pos).date;
+                    created.publisher = datas.get(pos).publisher;
+                    created.article = article;
+                    created.summary = datas.get(pos).summary;
+                    created.imageUri = datas.get(pos).imageUri;
                 });
             }
         }
@@ -155,17 +155,16 @@ public class ReadMode extends AppCompatActivity implements View.OnClickListener 
 
     class Parser extends AsyncTask<Void, Void, Void> { //기사 내용을 파싱해온다.
         protected Void doInBackground(Void... voids) {
-            Document doc = null;
+            Document doc;
             try {
                 doc = Jsoup.connect(link).get();
             } catch (IOException e) {
                 e.printStackTrace();
+                return null;
             }
             String imageSize = "<style> img{display: inline; height: auto; max-width: 100%;} </style>";
-            assert doc != null;
             Elements html = doc.getElementsByClass("_article_body_contents");
             article = imageSize + html.toString();
-
             return null;
         }
 
@@ -174,13 +173,16 @@ public class ReadMode extends AppCompatActivity implements View.OnClickListener 
             super.onPostExecute(aVoid);
 
             WebSettings settings = webView.getSettings();
-            settings.setJavaScriptEnabled(true);
-            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
+            // JS is intentionally disabled: article HTML is scraped from a third party
+            // and rendered inside the WebView. Enabling JS would let crafted markup
+            // run scripts in our app context.
+            settings.setJavaScriptEnabled(false);
             settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
             settings.setLoadWithOverviewMode(true);
             webView.setVerticalScrollBarEnabled(false);
             webView.setWebViewClient(new MyWebClient());
-            webView.loadData(article, "text/html; charset=UTF-8", null);
+            String body = article == null ? "" : article;
+            webView.loadData(body, "text/html; charset=UTF-8", null);
         }
     }
 }

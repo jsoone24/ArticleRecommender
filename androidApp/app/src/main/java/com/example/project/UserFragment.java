@@ -2,7 +2,6 @@ package com.example.project;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -69,11 +68,11 @@ public class UserFragment extends Fragment { //프래그먼트 뷰에서 유저 
         View view = inflater.inflate(R.layout.fragment_user, container, false);
 
 
-        String android_id = Settings.Secure.getString(getActivity().getApplicationContext().getContentResolver(), Settings.Secure.ANDROID_ID);
+        String userId = Config.userId(getActivity().getApplicationContext());
 
         readRecordButton = view.findViewById(R.id.readRecordButton);
         idInfo = view.findViewById(R.id.idInfo);
-        idInfo.setText("ID: "+android_id);
+        idInfo.setText("ID: " + userId);
 
         readRecordButton.setOnClickListener(new View.OnClickListener() {
             @Override

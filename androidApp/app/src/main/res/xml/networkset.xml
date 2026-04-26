@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Production network policy: HTTPS only.
+
+    The previous version of this file allowed cleartext HTTP to a hardcoded
+    IP, which let any network observer read the user's reading history.
+
+    For local development against an HTTP server, override this file in
+    src/debug/res/xml/networkset.xml rather than editing the production copy.
+-->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">121.167.156.3</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>

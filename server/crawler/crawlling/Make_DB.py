@@ -37,7 +37,8 @@ def main():
                 if len(articleSUM) == 0:  # 소분류별로 생성되었던 파일을 날짜별로 만들기 위해 통합
                     articleSUM = articleInfo
                 else:
-                    articleSUM = articleSUM.append(articleInfo, sort=True)
+                    # DataFrame.append was removed in pandas 2.0.
+                    articleSUM = pd.concat([articleSUM, articleInfo], sort=True)
 
         for i in range(5):
             articleRE = pd.DataFrame()
