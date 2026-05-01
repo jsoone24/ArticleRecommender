@@ -695,4 +695,11 @@ obj/
 !/gradle/wrapper/gradle-wrapper.jar
 !androidApp/gradle/wrapper/gradle-wrapper.jar
 
+# Generated crawler/recommender data. Keep crawled news text and per-user
+# profiles out of the public code repository.
+server/crawler/crawlling/articleInfo/
+server/crawler/crawlling/articleDB/
+server/recommender/py/articleDB/
+server/recommender/userprofile/
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,linux,androidstudio,android,python,django,java,intellij,pycharm

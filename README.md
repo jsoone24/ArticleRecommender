@@ -14,14 +14,15 @@ hardening (HMAC request signing, HTTPS-only, path-traversal defenses).
 ## Table of contents
 
 1. [Architecture](#architecture)
-2. [How the recommender works](#how-the-recommender-works)
-3. [Request lifecycle](#request-lifecycle)
-4. [Data schemas](#data-schemas)
-5. [Server setup](#server-setup)
-6. [Android setup](#android-setup)
-7. [Security model](#security-model)
-8. [File map](#file-map)
-9. [Known limitations](#known-limitations)
+2. [Data policy](#data-policy)
+3. [How the recommender works](#how-the-recommender-works)
+4. [Request lifecycle](#request-lifecycle)
+5. [Data schemas](#data-schemas)
+6. [Server setup](#server-setup)
+7. [Android setup](#android-setup)
+8. [Security model](#security-model)
+9. [File map](#file-map)
+10. [Known limitations](#known-limitations)
 
 ---
 
@@ -56,6 +57,25 @@ The client uploads a SQLite file of reading history when the app closes; the
 server triggers a Celery task that updates the user's keyword profile and
 recomputes their personal article ranking, then the client downloads the
 resulting SQLite on next launch.
+
+---
+
+## Data policy
+
+This repository keeps crawler and recommender code, not crawled article
+corpora. Generated files under `server/crawler/crawlling/articleInfo/`,
+`server/crawler/crawlling/articleDB/`, and
+`server/recommender/py/articleDB/` are intentionally ignored because they can
+contain copied article text, publisher metadata, and reporter contact details.
+
+To recreate the data locally, run the crawler and pivot step from the server
+package; the resulting files stay on your machine and should not be committed:
+
+```bash
+cd server
+python -m crawler.crawlling.crolling
+python -m crawler.crawlling.Make_DB
+```
 
 ---
 
@@ -368,6 +388,9 @@ right next steps are OAuth2 or device-attested tokens, not more obfuscation.
 
 ## Known limitations
 
+- **Generated data is local-only.** Crawl output and article matrix CSVs are
+  not committed; run the crawler locally or provide your own dataset before
+  executing the recommender pipeline.
 - **Hard-coded crawl date.** `crolling.py`, `Make_DB.py`, `User_update.py`,
   and `DB_similarity.py` all reference `2020-09-05`. To run live, swap those
   for `datetime.date.today()` (or wire a CLI arg) and schedule the crawler
